@@ -1,0 +1,109 @@
+---
+
+import { eq } from 'astro:db';
+import { Prompt, Story } from 'astro:db';
+import { db } from 'astro:db';
+
+export const prerender = true;
+export async function getStaticPaths() {
+    const data = await db.select().from(Prompt).leftJoin(Story, eq(Prompt.id, Story.promptId))
+    console.log({data})
+    const collated = data.reduce(
+    (acc, row) => {
+        const prompt = row.Prompt;
+        const story = row.Story;
+
+        if (!acc[prompt.id]) {
+        acc[prompt.id] = { prompt, stories: [] };
+        }
+
+        if (story) {
+        acc[prompt.id].stories.push(story);
+        }
+
+        return acc;
+    },
+    {},
+    );
+
+    const prompts = Object.entries(collated).map(([id, object]) => ({...object.prompt, stories: object.stories}))
+    
+
+
+
+    const paths = prompts.map(prompt => ({params: prompt.id, props: {prompt}}))
+    console.log({paths})
+    return prompts.map(prompt => ({params: {id: prompt.id}, props: prompt}))
+}
+
+const { id, name, description, stories } = Astro.props
+
+---
+
+
+<h1>{name}</h1>
+<div>{description}</div>
+
+
+<h2>Add your Story</h2>
+
+<form id="addStory" action="/api/addLink.json">
+
+<label>
+    Story Title
+    <input id="title" name="title" />
+</label>
+
+<label>
+    Story details
+    <textarea id="story" name="story"> </textarea>
+</label>
+
+<input type="hidden" name="promptId" value={id}>
+<button>Save Story</button>
+</form>
+
+{stories.map(story => (
+    <article>
+        <h2>{story.title}</h2>
+        <div>{story.story}</div>
+    </article>
+))}
+
+
+
+
+<script>
+
+import sanitizeHtml from "sanitize-html";
+
+    const form = document.querySelector("#addStory")
+    console.log(form)
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        console.log('form submit')
+        const formData = new FormData(form);
+        const title = sanitizeHtml(formData.get("title") as string);
+        const story = sanitizeHtml(
+            formData.get("story") as string
+        );
+        const promptId = formData.get("promptId")
+        const req = await fetch('/api/addStory.json', {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                title,
+                story,
+                promptId
+            })
+        })
+        const { success, data, message } = await req.json();
+
+        if (success) {
+            console.log(success,data,message)
+            form.reset()
+        }
+    })
+</script>
